@@ -3,79 +3,190 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vibrant Audio-Reactive Snowfall Visualization</title>
+    <title>Multi-Mode Audio-Reactive Visualization</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
     <style>
         body { margin: 0; padding: 0; overflow: hidden; }
         canvas { display: block; }
-        #startButton { position: absolute; top: 10px; left: 10px; z-index: 100; }
+        #startButton, #toggleButton { position: absolute; top: 10px; z-index: 100; }
+        #startButton { left: 10px; }
+        #toggleButton { left: 120px; }
     </style>
 </head>
 <body>
     <button id="startButton">Start Audio</button>
+    <button id="toggleButton">Toggle Visualization</button>
     <script>
         let audioContext, analyser, dataArray;
         let f = 0;
         let started = false;
-        const W = 500;
+        let currentVis = 0;
+        const W = 400;
+        const visCount = 5;
 
         function setup() {
-            createCanvas(W, W);
+            createCanvas(W, W, WEBGL);
+            colorMode(HSB, 360, 100, 100);
         }
 
         function draw() {
-            f++;
+            f += 0.01;
             background(0);
-            strokeWeight(3);
-
+            
             if (started && analyser) {
                 analyser.getByteFrequencyData(dataArray);
             }
 
-            for(let x = -f % 20; x < 600; x += 20) {
-                for(let y = -f % 20; y < 600; y += 20) {
-                    let noiseval = noise(x/99, y/99, f/99);
+            switch(currentVis) {
+                case 0: drawSnowfall(); break;
+                case 1: drawSpherical(); break;
+                case 2: drawLightBoxes(); break;
+                case 3: drawConstrained(); break;
+                case 4: drawCubeGrid(); break;
+            }
+        }
+
+        function drawSnowfall() {
+            push();
+            translate(-W/2, -W/2);
+            strokeWeight(3);
+            for(let x = -(f * 100) % 20; x < 600; x += 20) {
+                for(let y = -(f * 100) % 20; y < 600; y += 20) {
+                    let noiseval = noise(x/99, y/99, f*100);
                     if (noiseval < 0.4) {
-                        let colorIndex = floor(map(x + y, 0, W * 2, 0, dataArray ? dataArray.length - 1 : 255));
-                        let colorValue = started ? dataArray[colorIndex] : 128;
-                        
-                        // Create a more vibrant color spectrum
-                        let hue = map(colorValue, 0, 255, 0, 360);
-                        let saturation = 100;
-                        let brightness = map(colorValue, 0, 255, 50, 100);
-                        
-                        colorMode(HSB, 360, 100, 100);
-                        stroke(hue, saturation, brightness);
+                        let colorValue = getColorValue(x, y);
+                        setColorFromAudio(colorValue);
                         line(y, x, y+20, x+20);
                         line(x, y, x+20, y-20);
-                        colorMode(RGB, 255);
+                    }
+                }
+            }
+            pop();
+        }
+
+        function drawSpherical() {
+            for(let u = 0; u < TAU; u += PI/150) {
+                for(let v = 0; v < TAU; v += PI/150) {
+                    push();
+                    let r = 200 * sin(v);
+                    let Z = tan(U = u + f) * sin(v) * r;
+                    let S = Z * cos(U + v) * 9;
+                    rotateX(U);
+                    rotate(U);
+                    translate(sin(v) * W, sin(Z/W) * tan(v) * Z, -2 * Z);
+                    let colorValue = getColorValue(u * 100, v * 100);
+                    setColorFromAudio(colorValue);
+                    sphere(S/600, W);
+                    pop();
+                }
+            }
+        }
+
+        function drawLightBoxes() {
+            [-W, 0].forEach(t => pointLight([W], 0, t, W));
+            for(let i = 0; i < TAU; i += PI/512) {
+                push();
+                rotate(4 * i);
+                translate(200, 0);
+                rotateY(i + f);
+                let colorValue = getColorValue(i * 100, 0);
+                setColorFromAudio(colorValue);
+                box(200, 9, 200, 200);
+                pop();
+            }
+            push();
+            rotate(4 * -f);
+            translate(60, 0, 66);
+            let colorValue = getColorValue(f * 100, 0);
+            setColorFromAudio(colorValue);
+            sphere(33, W);
+            pop();
+        }
+
+        function drawConstrained() {
+            let R = 300 + 250 * sin(2 * f);
+            rotateY(R / 200);
+            stroke(255);
+            for(let u = 0; u < PI; u += PI/32) {
+                for(let v = 0; v < TAU; v += PI/32) {
+                    let x = constrain(R * sin(u) * sin(v), -130, 130);
+                    let y = constrain(R * cos(v), -130, 130);
+                    let z = constrain(R * cos(u) * sin(v), -130, 130);
+                    let colorValue = getColorValue(x, y);
+                    setColorFromAudio(colorValue);
+                    point(x, y, z);
+                }
+            }
+            noFill();
+            box(260);
+        }
+
+        function drawCubeGrid() {
+            rotateY(f / 99);
+            for(let z = -W; z < W; z += 47) {
+                for(let y = -W; y < W; y += 47) {
+                    for(let x = -W; x < W; x += 47) {
+                        push();
+                        let M = a => a - (k = a / Math.abs(a)) * 47 + k * f / 4 % 47;
+                        let X = M(x), Y = M(y), Z = M(z);
+                        translate(X, Y, Z);
+                        let s = 70 - dist(0, 0, 0, X, Y, Z) / 2;
+                        if (s > 0) {
+                            let colorValue = getColorValue(X, Y);
+                            setColorFromAudio(colorValue);
+                            box(s);
+                        }
+                        pop();
                     }
                 }
             }
         }
 
+        function getColorValue(x, y) {
+            if (started && dataArray) {
+                let index = floor(map(x + y, -W, W, 0, dataArray.length - 1));
+                return dataArray[index];
+            }
+            return 128;
+        }
+
+        function setColorFromAudio(colorValue) {
+            let hue = map(colorValue, 0, 255, 0, 360);
+            let saturation = 100;
+            let brightness = map(colorValue, 0, 255, 50, 100);
+            stroke(hue, saturation, brightness);
+            fill(hue, saturation, brightness);
+        }
+
         async function startAudio() {
-            try {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                await audioContext.resume();
+            if (!started) {
+                try {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    await audioContext.resume();
 
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                const source = audioContext.createMediaStreamSource(stream);
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    const source = audioContext.createMediaStreamSource(stream);
 
-                analyser = audioContext.createAnalyser();
-                analyser.fftSize = 2048;
-                source.connect(analyser);
+                    analyser = audioContext.createAnalyser();
+                    analyser.fftSize = 2048;
+                    source.connect(analyser);
 
-                dataArray = new Uint8Array(analyser.frequencyBinCount);
+                    dataArray = new Uint8Array(analyser.frequencyBinCount);
 
-                started = true;
-            } catch (error) {
-                console.error('Error starting audio:', error);
+                    started = true;
+                } catch (error) {
+                    console.error('Error starting audio:', error);
+                }
             }
         }
 
+        function toggleVisualization() {
+            currentVis = (currentVis + 1) % visCount;
+            f = 0; // Reset frame count when switching
+        }
+
         document.getElementById('startButton').addEventListener('click', startAudio);
+        document.getElementById('toggleButton').addEventListener('click', toggleVisualization);
     </script>
 </body>
 </html>
-
